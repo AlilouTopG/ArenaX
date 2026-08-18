@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://arenax-h4i.pages.dev/sitemap.xml
