@@ -1,6 +1,16 @@
 import env from './env.js';
 
-const allowedOrigins = new Set(env.CORS_ORIGINS);
+const DEFAULT_ORIGINS = [
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'http://localhost:4173',
+  'http://127.0.0.1:4173',
+];
+
+const allowedOrigins = new Set([
+  ...DEFAULT_ORIGINS,
+  ...(env.CORS_ORIGINS || []),
+]);
 
 export const corsOptions = {
   origin(origin, callback) {
