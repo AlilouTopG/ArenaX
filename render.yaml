@@ -1,0 +1,28 @@
+# Render blueprint - one-click backend deployment
+# Import this repo on render.com and Render will use this file automatically.
+services:
+  - type: web
+    name: arenax-api
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: node src/server.js
+    healthCheckPath: /api/v1/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: AUTO_SEED
+        value: "true"
+      # REQUIRED - replace with your deployed frontend URL (Vercel)
+      - key: CORS_ORIGINS
+        value: https://YOUR-FRONTEND.vercel.app
+      # REQUIRED - create a free MongoDB Atlas cluster and paste its URI here
+      - key: MONGO_URI
+        sync: false
+      # Auto-generated random secrets on first deploy
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true

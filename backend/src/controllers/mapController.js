@@ -17,12 +17,18 @@ export const nearByGyms = asyncHandler(async (req, res) => {
   if (maxMonthlyPrice) match['subscriptionPrices.monthly'] = { $lte: parseFloat(maxMonthlyPrice) };
   pipeline.push({ $match: match });
 
-  const totalResult = await Gym.aggregate([...pipeline, { $count: 'total' }]);
+  const totalResult = await Gym.aggregate([...pipeline, { $count: 'total' }]).catch((error) => {
+    if (error?.codeName === 'IndexNotFound' || /geo index/i.test(error?.message || '')) return [];
+    throw error;
+  });
   const total = totalResult[0]?.total || 0;
 
   pipeline.push({ $skip: (page - 1) * limit }, { $limit: limit });
 
-  const gyms = await Gym.aggregate(pipeline);
+  const gyms = await Gym.aggregate(pipeline).catch((error) => {
+    if (error?.codeName === 'IndexNotFound' || /geo index/i.test(error?.message || '')) return [];
+    throw error;
+  });
 
   const mapped = gyms.map((g) => ({
     ...g,

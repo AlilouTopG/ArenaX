@@ -39,3 +39,7 @@ desktop.ini
 tmp/
 temp/
 *.tmp
+# ArenaX runtime files
+watchdog.pid
+server.log
+vite.log

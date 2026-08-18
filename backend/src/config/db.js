@@ -26,7 +26,12 @@ const connect = async (uri, opts = {}) =>
  */
 export const connectDB = async () => {
   mongoose.set('strictQuery', true);
-  mongoose.set('sanitizeFilter', true);
+
+  if (env.NODE_ENV === 'production' && !env.MONGO_URI) {
+    throw new Error(
+      'MONGO_URI is required in production. Create a free MongoDB Atlas cluster (https://www.mongodb.com/atlas) and set MONGO_URI.',
+    );
+  }
 
   if (env.MONGO_URI) {
     try {
@@ -35,7 +40,11 @@ export const connectDB = async () => {
       logger.info(`MongoDB connected (cloud/external): ${conn.connection.host}`);
       return { conn, isInMemory: false };
     } catch (error) {
-      logger.error(`MongoDB connection failed (${env.MONGO_URI}): ${error.message} - falling back to in-memory`);
+      logger.error(`MongoDB connection failed (${env.MONGO_URI}): ${error.message}`);
+      if (env.NODE_ENV === 'production') {
+        throw new Error(`MongoDB connection failed in production: ${error.message}`);
+      }
+      logger.warn('Falling back to in-memory MongoDB (development only)');
     }
   } else {
     logger.warn('MONGO_URI not set - using in-memory MongoDB (data resets on restart)');

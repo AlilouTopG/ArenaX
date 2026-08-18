@@ -2,28 +2,44 @@ Option Explicit
 
 ' ============================================================
 '  ArenaX - One-Click Hidden Launcher (no CMD windows)
-'  - Frees ports 5000/5173 if busy
+'  - Stops any previous ArenaX watchdog + frees ports 5000/5173
 '  - Starts Backend hidden + fully detached (in-memory DB auto-seeds)
-'  - Waits for Backend health check, then starts Frontend
+'  - Waits for Backend health, then starts Frontend
+'  - Launches the hidden Watchdog (auto-restarts any stopped service forever)
 '  - Opens the browser automatically
-'  Logs: D:\ArenaX\backend\server.log , D:\ArenaX\frontend\vite.log
+'  Logs: <project>\backend\server.log , <project>\frontend\vite.log
+'  NOTE: paths are derived automatically from this script's location
 ' ============================================================
 
-Dim SHELL, BACKEND_DIR, FRONTEND_DIR, HEALTH_URL, i, ok, http
+Dim fso, SHELL, APP_DIR, BACKEND_DIR, FRONTEND_DIR, HEALTH_URL, i, ok, http, wmi, proc, pidFile
+
+Set fso   = CreateObject("Scripting.FileSystemObject")
 Set SHELL = CreateObject("WScript.Shell")
+Set wmi   = GetObject("winmgmts:\\.\root\cimv2")
 
-BACKEND_DIR  = "D:\ArenaX\backend"
-FRONTEND_DIR = "D:\ArenaX\frontend"
+APP_DIR      = fso.GetParentFolderName(WScript.ScriptFullName)
+BACKEND_DIR  = APP_DIR & "\backend"
+FRONTEND_DIR = APP_DIR & "\frontend"
 HEALTH_URL   = "http://localhost:5000/api/v1/health"
+pidFile      = APP_DIR & "\watchdog.pid"
 
-' 1) Free ports 5000 / 5173 if something is already listening
+' 0) Terminate any previous ArenaX watchdog + free ports 5000 / 5173
+If fso.FileExists(pidFile) Then
+    On Error Resume Next
+    Dim pidTxt
+    pidTxt = Trim(fso.OpenTextFile(pidFile, 1).ReadAll)
+    If Len(pidTxt) > 0 Then wmi.Get("Win32_Process.Handle=" & pidTxt).Terminate
+    Err.Clear
+    On Error GoTo 0
+    fso.DeleteFile pidFile, True
+End If
 SHELL.Run "powershell -NoProfile -WindowStyle Hidden -Command ""Get-NetTCPConnection -LocalPort 5000,5173 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }""", 0, True
 WScript.Sleep 2000
 
-' 2) Start Backend hidden + detached (starts listening + auto-seeds in-memory DB)
-SHELL.Run "powershell -NoProfile -WindowStyle Hidden -Command ""Start-Process -FilePath 'cmd' -ArgumentList '/c','cd /d " & BACKEND_DIR & " && node src/server.js >> server.log 2>&1' -WindowStyle Hidden""", 0, False
+' 1) Start Backend hidden + detached (starts listening + auto-seeds in-memory DB)
+SHELL.Run "cmd /c ""cd /d " & BACKEND_DIR & " && node src/server.js >> server.log 2>&1""", 0, False
 
-' 3) Wait until Backend responds on /health (max ~90 seconds)
+' 2) Wait until Backend responds on /health (max ~90 seconds)
 ok = False
 For i = 1 To 45
     WScript.Sleep 2000
@@ -40,18 +56,21 @@ For i = 1 To 45
     On Error GoTo 0
 Next
 
-' 4) Start Frontend hidden + detached (Vite dev server, strict port 5173)
-SHELL.Run "powershell -NoProfile -WindowStyle Hidden -Command ""Start-Process -FilePath 'cmd' -ArgumentList '/c','cd /d " & FRONTEND_DIR & " && node node_modules\vite\bin\vite.js --port 5173 --strictPort >> vite.log 2>&1' -WindowStyle Hidden""", 0, False
+' 3) Start Frontend hidden + detached (Vite dev server, strict port 5173)
+SHELL.Run "cmd /c ""cd /d " & FRONTEND_DIR & " && node node_modules\vite\bin\vite.js --port 5173 --strictPort >> vite.log 2>&1""", 0, False
 
-' 5) Open the browser + notify
+' 4) Start the hidden Watchdog (keeps services alive forever)
+SHELL.Run "wscript.exe """ & APP_DIR & "\watchdog.vbs""", 0, False
+
+' 5) Notify (auto-closes after 6 seconds, never blocks)
 If ok Then
-    WScript.Sleep 3000
-    SHELL.Run "http://localhost:5173", 1, False
-    MsgBox "ArenaX is running!" & vbCrLf & vbCrLf & _
-           "  Backend : http://localhost:5000" & vbCrLf & _
-           "  Frontend: http://localhost:5173" & vbCrLf & vbCrLf & _
-           "To stop: double-click stop-arenax.vbs", 64, "ArenaX"
+    SHELL.Popup "ArenaX started successfully." & vbCrLf & vbCrLf & _
+                "  Backend : http://localhost:5000" & vbCrLf & _
+                "  Frontend: http://localhost:5173" & vbCrLf & vbCrLf & _
+                "A hidden watchdog keeps both services running automatically." & vbCrLf & _
+                "To stop everything: double-click stop-arenax.vbs", 6, "ArenaX", 64
 Else
-    MsgBox "Backend did not start within 90 seconds." & vbCrLf & _
-           "Check D:\ArenaX\backend\server.log", 48, "ArenaX"
+    SHELL.Popup "Backend was not reachable within 90 seconds." & vbCrLf & _
+                "The watchdog will keep retrying automatically." & vbCrLf & _
+                "Check " & BACKEND_DIR & "\server.log", 8, "ArenaX", 48
 End If
